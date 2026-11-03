@@ -2,11 +2,26 @@ import { StudySession, Subject, StudyGoals } from '../types';
 import { formatClockTime, formatSecondsToHHMMSS, toISODateString } from './time';
 
 /**
+ * Sanitize and escape string to prevent CSV formula injection (CWE-1236)
+ * If cell starts with `=, +, -, @, \t, \r`, prepends a single quote so spreadsheets treat it as literal text.
+ */
+function sanitizeCSVField(val: string | number | undefined | null): string {
+  if (val === undefined || val === null) return '""';
+  let str = String(val).replace(/"/g, '""');
+
+  // Prevent spreadsheet formula / DDE injection
+  if (/^[=+@\-\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+
+  return `"${str}"`;
+}
+
+/**
  * Export study sessions to CSV file and trigger browser download
  */
 export function exportSessionsToCSV(sessions: StudySession[], filenamePrefix = 'studyclock_sessions'): void {
   if (!sessions || sessions.length === 0) {
-    alert('No sessions to export.');
     return;
   }
 
@@ -23,12 +38,6 @@ export function exportSessionsToCSV(sessions: StudySession[], filenamePrefix = '
     'Rating (1-5)'
   ];
 
-  const escapeCSV = (val: string | number | undefined) => {
-    if (val === undefined || val === null) return '""';
-    const str = String(val).replace(/"/g, '""');
-    return `"${str}"`;
-  };
-
   const rows = sessions.map(session => {
     const dateStr = toISODateString(session.startTime);
     const startStr = formatClockTime(session.startTime);
@@ -37,16 +46,16 @@ export function exportSessionsToCSV(sessions: StudySession[], filenamePrefix = '
     const durationMinutes = (session.durationSeconds / 60).toFixed(1);
 
     return [
-      escapeCSV(session.id),
-      escapeCSV(dateStr),
-      escapeCSV(session.subjectName),
-      escapeCSV(startStr),
-      escapeCSV(endStr),
-      escapeCSV(durationHHMMSS),
-      escapeCSV(durationMinutes),
-      escapeCSV(session.durationSeconds),
-      escapeCSV(session.notes || ''),
-      escapeCSV(session.rating ? `${session.rating}/5` : 'N/A')
+      sanitizeCSVField(session.id),
+      sanitizeCSVField(dateStr),
+      sanitizeCSVField(session.subjectName),
+      sanitizeCSVField(startStr),
+      sanitizeCSVField(endStr),
+      sanitizeCSVField(durationHHMMSS),
+      sanitizeCSVField(durationMinutes),
+      sanitizeCSVField(session.durationSeconds),
+      sanitizeCSVField(session.notes || ''),
+      sanitizeCSVField(session.rating ? `${session.rating}/5` : 'N/A')
     ].join(',');
   });
 
@@ -81,4 +90,3 @@ export function exportDataBackup(data: {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
-

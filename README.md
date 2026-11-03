@@ -1,4 +1,4 @@
-# StudyClock ⏱️ — Modern Study Timer & Duration Tracker
+# StudyClock ⏱️ — Modern Study Timer & Duration Tracker with MongoDB
 
 StudyClock is a modern, responsive, precision study-tracking web application designed to help students, developers, and lifelong learners maintain focus, measure duration accurately, and build lasting study habits.
 
@@ -6,104 +6,57 @@ StudyClock is a modern, responsive, precision study-tracking web application des
 
 ---
 
-## ✨ Features
+## 🗄️ Database & Cloud Persistence
 
-- **Reliable Timestamp-Based Stopwatch & Timer**:
-  - Live `HH:MM:SS` display with smooth monospace font and subtle glow.
-  - Tab-switching and refresh resilient (uses absolute timestamps so timing remains accurate even if the browser sleeps or reloads).
-  - Countdown mode (25m Pomodoro, 45m Deep Work, 60m Sprint) or Freeflow Stopwatch.
-  - Persistent mini-timer in navbar when navigating across pages.
-  - Fullscreen distraction-free **Focus Mode** (`M`).
-  - Synthesized ambient focus noise (Gentle Rain, Deep Focus Brown Noise, White Noise, Library/Café).
-  - Audio chimes (synthesized via Web Audio API with zero external file dependencies).
+StudyClock is connected to **MongoDB Atlas Cloud**:
+- **MongoDB Cluster**: `Cluster0` (`cluster0.mndhh.mongodb.net`)
+- **Database**: `studyclock`
+- **Security & Multi-Tenancy**:
+  - Full **Tenant Isolation**: All sessions, subjects, and goals are strictly scoped to the authenticated user ID (`userId`).
+  - **Zero Shared Data**: Other users cannot view, edit, or delete your study sessions.
+  - **Zero Mock Data**: Clean initial state tracking only real user activity.
+  - **NoSQL Injection & Mass Assignment Protection**: Whitelisted schemas and strictly typed parameters.
+  - **CSV Formula Injection Sanitization**: Safe export preventing spreadsheet DDE execution.
+- **Collections**:
+  - `users`: User credentials (PBKDF2 SHA-512 salted password hashes, JWT tokens).
+  - `sessions`: Exact study logs scoped by `userId`.
+  - `subjects`: User study subjects scoped by `userId`.
+  - `goals`: User daily and weekly targets scoped by `userId`.
 
-- **Dynamic Dashboard**:
-  - Large live digital clock showing current time, date, timezone, and motivational greeting.
-  - Key statistics: Today's study duration, weekly study duration, all-time sessions, and streak.
-  - Daily & weekly visual goal progress rings/bars with milestone completion badges.
-  - Quick study launcher to start sessions with one click.
-  - Recent study activity breakdown.
+---
 
-- **Subject Management**:
-  - Create, edit, and delete study subjects.
-  - Curated color palette presets + custom hex codes.
-  - Automatic tracking of total study hours and session counts per subject.
-  - Default subjects: Mathematics, Science, English, ICT, History, Other.
+## ⚙️ Environment Variables
 
-- **Interactive Analytics**:
-  - Daily study time chart (last 14 days).
-  - Weekly study time chart (last 8 weeks) with target reference lines.
-  - Monthly study trend area chart.
-  - Proportional subject distribution donut chart.
-  - Key performance indicators: Most productive day, average daily focus time, all-time hours.
+Add these to your local `.env` and in your **Vercel Project Settings &rarr; Environment Variables**:
 
-- **Study Session History**:
-  - Full tabular log of all sessions with exact start times, end times, durations, notes, and focus ratings (1–5 stars).
-  - Search by note keywords or subject name.
-  - Filter by date range (Today, 7 days, 30 days, All time) and subject.
-  - Inline editing and deletion of past sessions.
-  - One-click **Export to CSV**.
+| Variable | Example Value | Description |
+| :--- | :--- | :--- |
+| `MONGODB_URI` | `mongodb+srv://<USERNAME>:<PASSWORD>@cluster0.mndhh.mongodb.net/studyclock?appName=Cluster0` | MongoDB Atlas Connection String |
+| `MONGODB_DB` | `studyclock` | Target Database Name |
+| `JWT_SECRET` | `<32_CHAR_RANDOM_SECRET>` | Key for signing user authentication tokens |
 
-- **Goal & Streak Tracker**:
-  - Customizable daily and weekly targets in hours.
-  - Consecutive study streak calculator.
-  - Milestone achievement badges (3-Day Ignition, 7-Day Habit Builder, 14-Day Unstoppable, 30-Day Master).
-
-- **Theme & Data Resilience**:
-  - Dark Navy (default) and Light mode.
-  - Auto-saved to `localStorage`.
-  - JSON backup export and import.
-  - Reset data option with confirmation.
-  - Pre-populated realistic demo data for immediate preview.
-
-- **Keyboard Shortcuts**:
-  - `Space`: Start / Pause / Resume timer
-  - `F`: Finish session
-  - `R`: Discard timer
-  - `M`: Toggle Fullscreen Focus Mode
-  - `D` / `1`: Dashboard
-  - `T` / `2`: Study Timer
-  - `A` / `3`: Analytics
-  - `H` / `4`: History
-  - `S` / `5`: Subjects
-  - `G` / `6`: Goals & Streaks
-  - `?`: Open shortcuts cheat sheet
-  - `Esc`: Close modals
+> **Security Note:** Never commit your real `.env` file to version control. The repository's `.gitignore` automatically excludes `.env`.
 
 ---
 
 ## 🚀 Deploying to Vercel
 
-This repository is pre-configured with `vercel.json` for seamless zero-config deployment on Vercel.
+The application is pre-configured with `vercel.json` and Vercel Serverless Functions in `/api` (`/api/auth`, `/api/sessions`, `/api/subjects`, `/api/goals`).
 
-### Option 1: Git-Based Deployment (Recommended)
+### Step-by-Step Vercel Deployment:
 
-1. Push your repository to GitHub, GitLab, or Bitbucket:
+1. Commit and push your changes to your Git repository:
    ```bash
    git add .
-   git commit -m "feat: complete StudyClock web application"
+   git commit -m "fix(security): resolve all OWASP Top 10 vulnerabilities"
    git push origin main
    ```
-2. Go to [Vercel Dashboard](https://vercel.com/new).
-3. Import your `clock` repository.
-4. Vercel will automatically detect the settings:
-   - **Framework Preset**: `Vite`
-   - **Root Directory**: `./`
-   - **Build Command**: `pnpm run build` (or `npm run build`)
-   - **Output Directory**: `dist`
-5. Click **Deploy**. Your app will be live with global CDN edge routing and SSL in seconds!
-
-### Option 2: Deploy Using Vercel CLI
-
-1. Run the Vercel CLI directly via `npx`:
-   ```bash
-   npx vercel
-   ```
-2. Follow the interactive prompts to log in and select your team/account.
-3. For production deployment:
-   ```bash
-   npx vercel --prod
-   ```
+2. Open [Vercel Dashboard](https://vercel.com/new) and import your repository.
+3. Under **Environment Variables**, add:
+   - `MONGODB_URI`: Your MongoDB Atlas connection URI with your database user & password.
+   - `MONGODB_DB`: `studyclock`
+   - `JWT_SECRET`: A secure random secret string.
+4. Click **Deploy**.
 
 ---
 
@@ -112,28 +65,22 @@ This repository is pre-configured with `vercel.json` for seamless zero-config de
 ```bash
 # 1. Install dependencies
 pnpm install
-# or: npm install
 
-# 2. Run local dev server
+# 2. Run local dev server with MongoDB API middleware
 pnpm run dev
-# or: npm run dev
 
 # 3. Build for production
 pnpm run build
-# or: npm run build
-
-# 4. Preview production build locally
-pnpm run preview
-# or: npm run preview
 ```
 
 ---
 
 ## 📦 Tech Stack
 
-- **Framework**: React 18 + TypeScript + Vite
-- **Styling**: Tailwind CSS (Dark Navy & Light mode, Glassmorphism, Responsive design)
+- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
+- **Database & Backend**: MongoDB Atlas + Vercel Serverless Functions (`/api/*`)
+- **Authentication**: Salted PBKDF2 Password Hashing + HMAC SHA-256 JWT
 - **Icons**: Lucide React
 - **Charts**: Recharts
 - **Celebration Effects**: Canvas Confetti
-- **Audio**: Web Audio API (Synthesizer & Ambient Sound Generator)
+- **Audio Engine**: Web Audio API (Synthesizer & Ambient Noise Generator)

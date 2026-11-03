@@ -18,15 +18,24 @@ import {
   DEFAULT_GOALS,
   STORAGE_KEYS,
   clearActiveTimerState,
-  generateSeedSessions,
 } from '../utils/storage';
 import {
   toISODateString,
   calculateStudyStreak,
-  isSameCalendarDay,
-  formatDisplayDate,
 } from '../utils/time';
 import { soundEngine } from '../utils/sound';
+import {
+  fetchSessionsFromDB,
+  saveSessionToDB,
+  updateSessionInDB,
+  deleteSessionFromDB,
+  fetchSubjectsFromDB,
+  saveSubjectToDB,
+  updateSubjectInDB,
+  deleteSubjectFromDB,
+  fetchGoalsFromDB,
+  saveGoalsToDB,
+} from '../utils/api';
 
 interface DataContextType {
   sessions: StudySession[];
@@ -34,6 +43,8 @@ interface DataContextType {
   goals: StudyGoals;
   theme: 'dark' | 'light';
   soundEnabled: boolean;
+  dbConnected: boolean;
+  isSyncing: boolean;
   stats: ProductivityStats;
   daySummaries: DayStudySummary[];
   subjectSummaries: SubjectStudySummary[];
@@ -47,8 +58,8 @@ interface DataContextType {
   toggleTheme: () => void;
   toggleSound: () => void;
   resetAllData: () => void;
-  loadDemoData: () => void;
   restoreData: (data: { sessions?: StudySession[]; subjects?: Subject[]; goals?: StudyGoals }) => void;
+  refreshFromDB: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -57,11 +68,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [sessions, setSessions] = useState<StudySession[]>(loadSavedSessions);
   const [subjects, setSubjects] = useState<Subject[]>(loadSavedSubjects);
   const [goals, setGoals] = useState<StudyGoals>(loadSavedGoals);
+  const [dbConnected, setDbConnected] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.THEME);
     if (saved === 'light' || saved === 'dark') return saved;
-    return 'dark'; // Dark navy default as requested
+    return 'dark'; // Dark navy default
   });
 
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
@@ -88,22 +101,58 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem(STORAGE_KEYS.SOUND_ENABLED, String(soundEnabled));
   }, [soundEnabled]);
 
-  // Save sessions on change
+  // Initial fetch and synchronization from MongoDB
+  const refreshFromDB = async () => {
+    setIsSyncing(true);
+    try {
+      const [remoteSessions, remoteSubjects, remoteGoals] = await Promise.all([
+        fetchSessionsFromDB(),
+        fetchSubjectsFromDB(),
+        fetchGoalsFromDB(),
+      ]);
+
+      if (remoteSessions !== null) {
+        setSessions(remoteSessions);
+        saveSessions(remoteSessions);
+        setDbConnected(true);
+      }
+      if (remoteSubjects !== null && remoteSubjects.length > 0) {
+        setSubjects(remoteSubjects);
+        saveSubjects(remoteSubjects);
+        setDbConnected(true);
+      }
+      if (remoteGoals !== null) {
+        setGoals(remoteGoals);
+        saveGoals(remoteGoals);
+        setDbConnected(true);
+      }
+    } catch (err) {
+      console.warn('MongoDB sync notice:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshFromDB();
+  }, []);
+
+  // Save sessions on change locally
   useEffect(() => {
     saveSessions(sessions);
   }, [sessions]);
 
-  // Save subjects on change
+  // Save subjects on change locally
   useEffect(() => {
     saveSubjects(subjects);
   }, [subjects]);
 
-  // Save goals on change
+  // Save goals on change locally
   useEffect(() => {
     saveGoals(goals);
   }, [goals]);
 
-  // Add session
+  // Add session (writes to state, localStorage, and MongoDB)
   const addSession = (sessionData: Omit<StudySession, 'id' | 'createdAt'>): StudySession => {
     const newSession: StudySession = {
       ...sessionData,
@@ -111,6 +160,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: Date.now(),
     };
     setSessions((prev) => [newSession, ...prev]);
+
+    // Send to MongoDB in background
+    saveSessionToDB(newSession).then((ok) => {
+      if (ok) setDbConnected(true);
+    });
+
     return newSession;
   };
 
@@ -119,11 +174,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSessions((prev) =>
       prev.map((s) => (s.id === updatedSession.id ? updatedSession : s))
     );
+
+    // Sync to MongoDB
+    updateSessionInDB(updatedSession).then((ok) => {
+      if (ok) setDbConnected(true);
+    });
   };
 
   // Delete session
   const deleteSession = (id: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== id));
+
+    // Sync to MongoDB
+    deleteSessionFromDB(id).then((ok) => {
+      if (ok) setDbConnected(true);
+    });
   };
 
   // Add subject
@@ -135,6 +200,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: Date.now(),
     };
     setSubjects((prev) => [...prev, newSub]);
+
+    // Sync to MongoDB
+    saveSubjectToDB(newSub).then((ok) => {
+      if (ok) setDbConnected(true);
+    });
+
     return newSub;
   };
 
@@ -143,7 +214,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSubjects((prev) =>
       prev.map((sub) => (sub.id === id ? { ...sub, name: name.trim(), color } : sub))
     );
-    // Also update subjectName and subjectColor in historical sessions for consistency
+    // Also update historical session subject metadata
     setSessions((prev) =>
       prev.map((s) =>
         s.subjectId === id
@@ -151,6 +222,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           : s
       )
     );
+
+    // Sync to MongoDB
+    updateSubjectInDB(id, name, color).then((ok) => {
+      if (ok) setDbConnected(true);
+    });
   };
 
   // Delete subject
@@ -158,34 +234,41 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (subjects.length <= 1) {
       return { success: false, message: 'You must maintain at least one subject.' };
     }
-    // Check if sessions use this subject
-    const sessionsUsingSubject = sessions.filter((s) => s.subjectId === id);
-    if (sessionsUsingSubject.length > 0) {
-      // Reassign to "Other" or first available subject
-      const fallbackSubject = subjects.find((s) => s.id !== id) || DEFAULT_SUBJECTS[DEFAULT_SUBJECTS.length - 1];
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.subjectId === id
-            ? {
-                ...s,
-                subjectId: fallbackSubject.id,
-                subjectName: fallbackSubject.name,
-                subjectColor: fallbackSubject.color,
-              }
-            : s
-        )
-      );
-    }
+    const fallbackSubject = subjects.find((s) => s.id !== id) || DEFAULT_SUBJECTS[DEFAULT_SUBJECTS.length - 1];
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.subjectId === id
+          ? {
+              ...s,
+              subjectId: fallbackSubject.id,
+              subjectName: fallbackSubject.name,
+              subjectColor: fallbackSubject.color,
+            }
+          : s
+      )
+    );
     setSubjects((prev) => prev.filter((sub) => sub.id !== id));
+
+    // Sync to MongoDB
+    deleteSubjectFromDB(id).then((ok) => {
+      if (ok) setDbConnected(true);
+    });
+
     return { success: true };
   };
 
   // Update goals
   const updateGoals = (newGoals: Partial<StudyGoals>) => {
-    setGoals((prev) => ({
-      ...prev,
+    const updated = {
+      ...goals,
       ...newGoals,
-    }));
+    };
+    setGoals(updated);
+
+    // Sync to MongoDB
+    saveGoalsToDB(updated).then((ok) => {
+      if (ok) setDbConnected(true);
+    });
   };
 
   const toggleTheme = () => {
@@ -204,34 +287,32 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.removeItem(STORAGE_KEYS.SESSIONS);
     localStorage.removeItem(STORAGE_KEYS.SUBJECTS);
     localStorage.removeItem(STORAGE_KEYS.GOALS);
-  };
 
-  const loadDemoData = () => {
-    const demos = generateSeedSessions();
-    setSessions(demos);
-    setSubjects(DEFAULT_SUBJECTS);
-    setGoals(DEFAULT_GOALS);
-    saveSessions(demos);
-    saveSubjects(DEFAULT_SUBJECTS);
-    saveGoals(DEFAULT_GOALS);
+    // Also delete remotely
+    sessions.forEach((s) => deleteSessionFromDB(s.id));
+    saveGoalsToDB(DEFAULT_GOALS);
   };
 
   const restoreData = (data: { sessions?: StudySession[]; subjects?: Subject[]; goals?: StudyGoals }) => {
     if (data.sessions && Array.isArray(data.sessions)) {
       setSessions(data.sessions);
       saveSessions(data.sessions);
+      data.sessions.forEach((s) => saveSessionToDB(s));
     }
     if (data.subjects && Array.isArray(data.subjects) && data.subjects.length > 0) {
       setSubjects(data.subjects);
       saveSubjects(data.subjects);
+      data.subjects.forEach((sub) => saveSubjectToDB(sub));
     }
     if (data.goals) {
-      setGoals({
+      const g = {
         dailyHours: data.goals.dailyHours || DEFAULT_GOALS.dailyHours,
         weeklyHours: data.goals.weeklyHours || DEFAULT_GOALS.weeklyHours,
         monthlyHours: data.goals.monthlyHours || DEFAULT_GOALS.monthlyHours,
-      });
-      saveGoals(data.goals);
+      };
+      setGoals(g);
+      saveGoals(g);
+      saveGoalsToDB(g);
     }
   };
 
@@ -241,7 +322,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     
     // Start of this week (Monday)
-    const dayOfWeek = now.getDay(); // 0 is Sunday, 1 is Monday...
+    const dayOfWeek = now.getDay();
     const distanceToMonday = (dayOfWeek + 6) % 7;
     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday).getTime();
     
@@ -257,7 +338,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const dayNameTotalsMap = new Map<string, number>();
     const subjectMap = new Map<string, { seconds: number; count: number }>();
 
-    // Initialize days of the week for dayName totals
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     dayNames.forEach((d) => dayNameTotalsMap.set(d, 0));
 
@@ -275,7 +355,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         monthlySeconds += dur;
       }
 
-      // Group by calendar day string
       const dateKey = toISODateString(session.startTime);
       const existingDay = dayTotalsMap.get(dateKey) || {
         totalSeconds: 0,
@@ -286,21 +365,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       existingDay.count += 1;
       dayTotalsMap.set(dateKey, existingDay);
 
-      // Group by Day of week name (e.g. "Monday")
       const sessionDayName = dayNames[new Date(session.startTime).getDay()];
       dayNameTotalsMap.set(sessionDayName, (dayNameTotalsMap.get(sessionDayName) || 0) + dur);
 
-      // Group by subject
       const existingSub = subjectMap.get(session.subjectId) || { seconds: 0, count: 0 };
       existingSub.seconds += dur;
       existingSub.count += 1;
       subjectMap.set(session.subjectId, existingSub);
     });
 
-    // Calculate streaks
     const { currentStreak, bestStreak } = calculateStudyStreak(sessions);
 
-    // Calculate most productive day
     let mostProductiveDayName = 'None';
     let mostProductiveDaySeconds = 0;
     dayNameTotalsMap.forEach((seconds, name) => {
@@ -310,11 +385,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     });
 
-    // Average daily study time (across active days or last 14 days)
     const activeDaysCount = Math.max(dayTotalsMap.size, 1);
-    const averageDailySeconds = Math.round(allTimeSeconds / activeDaysCount);
+    const averageDailySeconds = allTimeSeconds > 0 ? Math.round(allTimeSeconds / activeDaysCount) : 0;
 
-    // Goal completions
     const dailyTargetSeconds = goals.dailyHours * 3600;
     const weeklyTargetSeconds = goals.weeklyHours * 3600;
     const dailyGoalCompletionPercent = dailyTargetSeconds > 0
@@ -339,7 +412,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       weeklyGoalCompletionPercent,
     };
 
-    // Build last 14 days list for daily chart
     const daysArr: DayStudySummary[] = [];
     for (let i = 13; i >= 0; i--) {
       const targetDate = new Date();
@@ -356,7 +428,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
     }
 
-    // Build subject summaries
     const subSummaries: SubjectStudySummary[] = subjects.map((sub) => {
       const data = subjectMap.get(sub.id) || { seconds: 0, count: 0 };
       const pct = allTimeSeconds > 0 ? Math.round((data.seconds / allTimeSeconds) * 100) : 0;
@@ -386,6 +457,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         goals,
         theme,
         soundEnabled,
+        dbConnected,
+        isSyncing,
         stats,
         daySummaries,
         subjectSummaries,
@@ -399,8 +472,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         toggleTheme,
         toggleSound,
         resetAllData,
-        loadDemoData,
         restoreData,
+        refreshFromDB,
       }}
     >
       {children}
@@ -415,4 +488,3 @@ export const useData = () => {
   }
   return context;
 };
-

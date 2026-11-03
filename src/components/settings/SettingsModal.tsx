@@ -10,7 +10,9 @@ import {
   Download,
   Upload,
   AlertTriangle,
-  Sparkles,
+  Database,
+  CheckCircle2,
+  RefreshCw,
   Check,
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
@@ -28,8 +30,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     soundEnabled,
     toggleSound,
     resetAllData,
-    loadDemoData,
     restoreData,
+    refreshFromDB,
+    dbConnected,
+    isSyncing,
     sessions,
     subjects,
     goals,
@@ -81,10 +85,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
             <div>
               <h3 className="text-lg font-bold text-white dark:text-white light:text-slate-900">
-                Preferences & Data Management
+                Preferences & Database
               </h3>
               <p className="text-xs text-slate-400 dark:text-slate-400 light:text-slate-500">
-                Configure your StudyClock application settings
+                Configure StudyClock settings and view MongoDB status
               </p>
             </div>
           </div>
@@ -98,7 +102,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
         <div className="mt-5 space-y-5">
           
-          {/* Appearance & Sound */}
+          {/* MongoDB Cloud Database Status */}
+          <div className="p-4 rounded-xl bg-gradient-to-br from-navy-850 to-purple-950/20 border border-purple-500/30 dark:bg-navy-850 dark:border-purple-500/30 light:bg-purple-50/50 light:border-purple-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+                  <Database className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white dark:text-white light:text-slate-900">
+                      MongoDB Atlas Cluster
+                    </span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-mono mt-0.5 truncate max-w-[260px]">
+                    cluster0.mndhh.mongodb.net
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={refreshFromDB}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600/20 border border-purple-500/40 text-purple-300 hover:bg-purple-600/30 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>Sync Now</span>
+              </button>
+            </div>
+          </div>
+
+          {/* General: Theme & Sound */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               General
@@ -143,10 +182,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           </div>
 
-          {/* Backup & Demo Data */}
+          {/* Backup & Data */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Data & Storage
+              Data Portability
             </h4>
 
             <div className="grid grid-cols-2 gap-3">
@@ -179,17 +218,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 <Check className="h-3.5 w-3.5" /> {importStatus}
               </p>
             )}
-
-            <button
-              onClick={() => {
-                loadDemoData();
-                alert('Demo study sessions loaded successfully!');
-              }}
-              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs font-semibold text-purple-300 hover:bg-purple-500/20 transition-colors"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>Load Realistic Sample Demo Data</span>
-            </button>
           </div>
 
           {/* Reset All Data Section */}
@@ -206,7 +234,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <div className="p-4 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs space-y-3">
                 <div className="flex items-center gap-2 font-bold">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span>Warning: All sessions, custom subjects and goals will be cleared.</span>
+                  <span>Warning: All sessions, custom subjects and goals will be cleared from database and storage.</span>
                 </div>
                 <div className="flex items-center justify-end gap-3">
                   <button
@@ -232,4 +260,3 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     </div>
   );
 };
-

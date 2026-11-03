@@ -12,12 +12,14 @@ import { SessionHistory } from './components/history/SessionHistory';
 import { SubjectList } from './components/subjects/SubjectList';
 import { GoalManager } from './components/goals/GoalManager';
 import { ActiveTab } from './types';
+import { AlertTriangle } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
 
   const {
     status,
@@ -54,6 +56,7 @@ const MainLayout: React.FC = () => {
       if (e.key === 'Escape') {
         setIsShortcutsOpen(false);
         setIsSettingsOpen(false);
+        setIsDiscardModalOpen(false);
         if (isFocusMode) {
           toggleFocusMode();
         }
@@ -81,9 +84,7 @@ const MainLayout: React.FC = () => {
 
       if (e.key.toLowerCase() === 'r') {
         if (status !== 'idle') {
-          if (confirm('Are you sure you want to discard this active timer session?')) {
-            resetTimer();
-          }
+          setIsDiscardModalOpen(true);
         }
         return;
       }
@@ -127,6 +128,46 @@ const MainLayout: React.FC = () => {
       {/* Modals */}
       <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
+      {/* Non-blocking Discard Confirmation Modal */}
+      {isDiscardModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="relative w-full max-w-sm rounded-2xl bg-navy-900 border border-slate-750 p-6 shadow-2xl dark:bg-navy-900 dark:border-slate-750 light:bg-white light:border-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-rose-500/20 text-rose-400">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white dark:text-white light:text-slate-900">
+                  Discard Active Session?
+                </h3>
+                <p className="text-xs text-slate-400 dark:text-slate-400 light:text-slate-500">
+                  Are you sure you want to discard current timer progress?
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsDiscardModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  resetTimer();
+                  setIsDiscardModalOpen(false);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 text-white hover:bg-rose-500 shadow-md shadow-rose-600/30"
+              >
+                Yes, Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top Navbar */}
       <Navbar
@@ -173,4 +214,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

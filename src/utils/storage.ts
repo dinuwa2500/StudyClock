@@ -33,71 +33,11 @@ export const DEFAULT_TIMER_STATE: ActiveTimerState = {
   notes: '',
 };
 
-/**
- * Generate initial realistic seed sessions for realistic experience
- */
-export function generateSeedSessions(): StudySession[] {
-  const sessions: StudySession[] = [];
-  const now = Date.now();
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  const mockConfigs = [
-    // Today
-    { daysAgo: 0, hoursAgo: 4, durationMins: 75, subject: DEFAULT_SUBJECTS[0], note: 'Calculus differential equations review', rating: 5 },
-    { daysAgo: 0, hoursAgo: 1.5, durationMins: 45, subject: DEFAULT_SUBJECTS[3], note: 'TypeScript generics & async patterns practice', rating: 4 },
-    // Yesterday
-    { daysAgo: 1, hoursAgo: 6, durationMins: 90, subject: DEFAULT_SUBJECTS[1], note: 'Physics mechanics problem sets', rating: 5 },
-    { daysAgo: 1, hoursAgo: 2, durationMins: 50, subject: DEFAULT_SUBJECTS[2], note: 'Essay structure and vocabulary review', rating: 4 },
-    // 2 days ago
-    { daysAgo: 2, hoursAgo: 5, durationMins: 110, subject: DEFAULT_SUBJECTS[0], note: 'Linear algebra matrix transformations', rating: 5 },
-    { daysAgo: 2, hoursAgo: 2, durationMins: 40, subject: DEFAULT_SUBJECTS[4], note: 'Cold War timeline & cause-effect analysis', rating: 4 },
-    // 3 days ago
-    { daysAgo: 3, hoursAgo: 4, durationMins: 85, subject: DEFAULT_SUBJECTS[3], note: 'Database schema normalization & SQL queries', rating: 4 },
-    // 4 days ago
-    { daysAgo: 4, hoursAgo: 5, durationMins: 120, subject: DEFAULT_SUBJECTS[1], note: 'Organic chemistry reaction mechanisms', rating: 5 },
-    { daysAgo: 4, hoursAgo: 1, durationMins: 35, subject: DEFAULT_SUBJECTS[5], note: 'General academic planning and reading', rating: 4 },
-    // 5 days ago
-    { daysAgo: 5, hoursAgo: 4, durationMins: 95, subject: DEFAULT_SUBJECTS[0], note: 'Integration techniques & improper integrals', rating: 4 },
-    // 6 days ago
-    { daysAgo: 6, hoursAgo: 7, durationMins: 60, subject: DEFAULT_SUBJECTS[2], note: 'Grammar exercises & comprehension quiz', rating: 4 },
-    { daysAgo: 6, hoursAgo: 3, durationMins: 75, subject: DEFAULT_SUBJECTS[3], note: 'Data structures: binary search trees', rating: 5 },
-    // 7 days ago
-    { daysAgo: 7, hoursAgo: 4, durationMins: 105, subject: DEFAULT_SUBJECTS[1], note: 'Cellular respiration biology notes', rating: 5 },
-    // 8-12 days ago for monthly chart richness
-    { daysAgo: 8, hoursAgo: 5, durationMins: 90, subject: DEFAULT_SUBJECTS[4], note: 'Industrial revolution primary sources', rating: 4 },
-    { daysAgo: 9, hoursAgo: 6, durationMins: 130, subject: DEFAULT_SUBJECTS[0], note: 'Probability theory & random variables', rating: 5 },
-    { daysAgo: 10, hoursAgo: 4, durationMins: 80, subject: DEFAULT_SUBJECTS[3], note: 'Computer networking: TCP/IP stack', rating: 4 },
-    { daysAgo: 11, hoursAgo: 5, durationMins: 115, subject: DEFAULT_SUBJECTS[1], note: 'Electromagnetism practice problems', rating: 5 },
-    { daysAgo: 12, hoursAgo: 3, durationMins: 70, subject: DEFAULT_SUBJECTS[2], note: 'Literature critique analysis', rating: 4 },
-  ];
-
-  mockConfigs.forEach((cfg, idx) => {
-    const end = now - (cfg.daysAgo * dayMs) - (cfg.hoursAgo * 3600 * 1000);
-    const start = end - (cfg.durationMins * 60 * 1000);
-    sessions.push({
-      id: `session-seed-${idx + 1}`,
-      subjectId: cfg.subject.id,
-      subjectName: cfg.subject.name,
-      subjectColor: cfg.subject.color,
-      startTime: start,
-      endTime: end,
-      durationSeconds: cfg.durationMins * 60,
-      notes: cfg.note,
-      rating: cfg.rating,
-      createdAt: start,
-    });
-  });
-
-  return sessions;
-}
-
 export function loadSavedSessions(): StudySession[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SESSIONS);
     if (!raw) {
-      const initial = generateSeedSessions();
-      localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(initial));
-      return initial;
+      return []; // Clean empty start - no mock data!
     }
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -200,4 +140,3 @@ export function clearActiveTimerState(): void {
     console.error('Failed to clear timer state', err);
   }
 }
-
