@@ -1,4 +1,4 @@
-import { getDb } from './_lib/mongodb';
+import { getDb } from './_lib/mongodb.ts';
 import {
   hashPassword,
   verifyPassword,
@@ -6,22 +6,21 @@ import {
   getAuthUser,
   setCorsHeaders,
   checkRateLimit,
-} from './_lib/auth';
+  parseRequestBody,
+  getActionParam,
+} from './_lib/auth.ts';
 
 export default async function handler(req: any, res: any) {
   if (setCorsHeaders(req, res)) return;
 
   const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'ip';
-  if (!checkRateLimit(`auth-${clientIp}`, 30, 60000)) {
+  if (!checkRateLimit(`auth-${clientIp}`, 60, 60000)) {
     return res.status(429).json({ error: 'Too many authentication attempts. Please try again in a minute.' });
   }
 
   try {
-    const db = await getDb();
-    const usersCollection = db.collection('users');
-
-    const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const action = urlObj.searchParams.get('action') || req.body?.action || 'login';
+    const body = await parseRequestBody(req);
+    const action = getActionParam(req, body);
 
     // GET /api/auth?action=me
     if (req.method === 'GET') {
@@ -36,16 +35,18 @@ export default async function handler(req: any, res: any) {
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const db = await getDb();
+    const usersCollection = db.collection('users');
 
-    // 1. ANONYMOUS GUEST REGISTRATION (Zero-friction start with full tenant isolation)
+    // 1. ANONYMOUS GUEST REGISTRATION
     if (action === 'anonymous') {
       const guestId = `user-guest-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
       const guestName = `Guest_${Math.floor(1000 + Math.random() * 9000)}`;
 
       const userRecord = {
         userId: guestId,
-        username: guestName,
+        username: guestName.toLowerCase(),
+        displayName: guestName,
         isAnonymous: true,
         createdAt: Date.now(),
       };
@@ -55,13 +56,14 @@ export default async function handler(req: any, res: any) {
 
       return res.status(201).json({
         token,
-        user: { userId: guestId, username: guestName, isAnonymous: true },
+        user: { userId: guestId, username: guestName, displayName: guestName, isAnonymous: true },
       });
     }
 
     // 2. REGISTER
     if (action === 'register') {
-      const { username, password } = body;
+      const username = body?.username;
+      const password = body?.password;
 
       if (!username || typeof username !== 'string' || username.trim().length < 3 || username.trim().length > 30) {
         return res.status(400).json({ error: 'Username must be between 3 and 30 characters.' });
@@ -82,7 +84,7 @@ export default async function handler(req: any, res: any) {
         return res.status(409).json({ error: 'Username is already taken. Please choose another.' });
       }
 
-      // Check if user is converting an existing anonymous session
+      // Check if user is upgrading an existing anonymous session
       const existingAuth = getAuthUser(req);
       const userId = existingAuth?.userId || `user-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
@@ -97,7 +99,6 @@ export default async function handler(req: any, res: any) {
       };
 
       if (existingAuth?.userId) {
-        // Upgrade existing anonymous user
         await usersCollection.updateOne(
           { userId: existingAuth.userId },
           { $set: newUser },
@@ -116,7 +117,8 @@ export default async function handler(req: any, res: any) {
 
     // 3. LOGIN
     if (action === 'login') {
-      const { username, password } = body;
+      const username = body?.username;
+      const password = body?.password;
 
       if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
         return res.status(400).json({ error: 'Username and password are required.' });
@@ -126,8 +128,7 @@ export default async function handler(req: any, res: any) {
       const user = await usersCollection.findOne({ username: cleanUsername });
 
       if (!user || !user.password) {
-        // Constant-time check simulation to prevent username enumeration timing attacks
-        verifyPassword('dummy_password', 'salt:0000000000000000000000000000000000000000000000000000000000000000');
+        verifyPassword('dummy', 'salt:0000000000000000000000000000000000000000000000000000000000000000');
         return res.status(401).json({ error: 'Invalid username or password.' });
       }
 
@@ -146,7 +147,6 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Invalid action requested.' });
   } catch (error: any) {
     console.error('Authentication Error:', error);
-    return res.status(500).json({ error: 'An unexpected server error occurred. Please try again later.' });
+    return res.status(500).json({ error: 'Database or server connection failure: ' + (error.message || 'Unknown') });
   }
 }
-

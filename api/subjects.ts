@@ -1,5 +1,5 @@
-import { getDb } from './_lib/mongodb';
-import { getAuthUser, setCorsHeaders, checkRateLimit } from './_lib/auth';
+import { getDb } from './_lib/mongodb.ts';
+import { getAuthUser, setCorsHeaders, checkRateLimit, parseRequestBody } from './_lib/auth.ts';
 
 const DEFAULT_SUBJECTS_TEMPLATE = [
   { id: 'sub-math', name: 'Mathematics', color: '#3B82F6' },
@@ -50,10 +50,10 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json(mapped);
     }
 
+    const body = await parseRequestBody(req);
+
     // POST /api/subjects
     if (req.method === 'POST') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-
       if (!body || typeof body !== 'object' || typeof body.name !== 'string' || !body.name.trim()) {
         return res.status(400).json({ error: 'Subject name is required.' });
       }
@@ -78,8 +78,6 @@ export default async function handler(req: any, res: any) {
 
     // PUT /api/subjects
     if (req.method === 'PUT') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-
       if (!body || typeof body !== 'object' || typeof body.id !== 'string' || !body.id.trim()) {
         return res.status(400).json({ error: 'Valid subject id is required.' });
       }
@@ -113,7 +111,7 @@ export default async function handler(req: any, res: any) {
     // DELETE /api/subjects?id=...
     if (req.method === 'DELETE') {
       const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-      const rawId = urlObj.searchParams.get('id') || (typeof req.body === 'object' ? req.body?.id : null);
+      const rawId = urlObj.searchParams.get('id') || body?.id;
 
       if (!rawId || typeof rawId !== 'string' || !rawId.trim()) {
         return res.status(400).json({ error: 'Valid subject id is required.' });
@@ -121,7 +119,6 @@ export default async function handler(req: any, res: any) {
 
       const subjectId = rawId.trim();
 
-      // Guard: Ensure user keeps at least one subject
       const totalUserSubjects = await collection.countDocuments({ userId: authUser.userId });
       if (totalUserSubjects <= 1) {
         return res.status(400).json({ error: 'You must maintain at least one subject.' });
@@ -138,6 +135,6 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   } catch (error: any) {
     console.error('API /api/subjects internal error:', error);
-    return res.status(500).json({ error: 'An unexpected server error occurred.' });
+    return res.status(500).json({ error: 'An unexpected server error occurred: ' + (error.message || 'Unknown') });
   }
 }

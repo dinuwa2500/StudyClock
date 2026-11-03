@@ -1,5 +1,5 @@
-import { getDb } from './_lib/mongodb';
-import { getAuthUser, setCorsHeaders, checkRateLimit } from './_lib/auth';
+import { getDb } from './_lib/mongodb.ts';
+import { getAuthUser, setCorsHeaders, checkRateLimit, parseRequestBody } from './_lib/auth.ts';
 
 export default async function handler(req: any, res: any) {
   if (setCorsHeaders(req, res)) return;
@@ -9,7 +9,6 @@ export default async function handler(req: any, res: any) {
     return res.status(401).json({ error: 'Unauthorized: Authentication required to access study sessions.' });
   }
 
-  // Rate limiting per user
   if (!checkRateLimit(`sessions-${authUser.userId}`, 120, 60000)) {
     return res.status(429).json({ error: 'Too many requests. Please slow down.' });
   }
@@ -33,15 +32,14 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json(mapped);
     }
 
+    const body = await parseRequestBody(req);
+
     // POST /api/sessions -> Create session scoped to this user
     if (req.method === 'POST') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-
       if (!body || typeof body !== 'object') {
         return res.status(400).json({ error: 'Invalid request body.' });
       }
 
-      // Input validation
       const durationSeconds = Math.max(1, Math.min(86400, parseInt(body.durationSeconds) || 0));
       const startTime = parseInt(body.startTime) || Date.now() - durationSeconds * 1000;
       const endTime = parseInt(body.endTime) || startTime + durationSeconds * 1000;
@@ -74,16 +72,13 @@ export default async function handler(req: any, res: any) {
 
     // PUT /api/sessions -> Update only this user's session with strict field whitelisting
     if (req.method === 'PUT') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-
       if (!body || typeof body !== 'object' || typeof body.id !== 'string' || !body.id.trim()) {
         return res.status(400).json({ error: 'Valid session id is required.' });
       }
 
       const sessionId = body.id.trim();
-
-      // Explicit whitelist of modifiable attributes
       const updateDoc: Record<string, any> = {};
+
       if (typeof body.notes === 'string') updateDoc.notes = body.notes.slice(0, 2000).trim();
       if (typeof body.rating === 'number') updateDoc.rating = Math.min(5, Math.max(1, body.rating));
       if (typeof body.durationSeconds === 'number') updateDoc.durationSeconds = Math.max(1, Math.min(86400, body.durationSeconds));
@@ -108,7 +103,7 @@ export default async function handler(req: any, res: any) {
     // DELETE /api/sessions?id=... -> Delete only this user's session
     if (req.method === 'DELETE') {
       const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-      const rawId = urlObj.searchParams.get('id') || (typeof req.body === 'object' ? req.body?.id : null);
+      const rawId = urlObj.searchParams.get('id') || body?.id;
 
       if (!rawId || typeof rawId !== 'string' || !rawId.trim()) {
         return res.status(400).json({ error: 'Valid session id is required.' });
@@ -127,6 +122,6 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   } catch (error: any) {
     console.error('API /api/sessions internal error:', error);
-    return res.status(500).json({ error: 'An unexpected server error occurred.' });
+    return res.status(500).json({ error: 'An unexpected server error occurred: ' + (error.message || 'Unknown') });
   }
 }

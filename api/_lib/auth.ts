@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 
-// Secret key for signing tokens
 const JWT_SECRET = process.env.JWT_SECRET || process.env.APP_SECRET || 'studyclock_secure_fallback_secret_key_99482104810294812048';
 
 export interface AuthUser {
@@ -108,9 +107,8 @@ export function checkRateLimit(key: string, maxRequests = 100, windowMs = 60000)
  * Set secure CORS headers without wildcard credentials vulnerability
  */
 export function setCorsHeaders(req: any, res: any): boolean {
-  const origin = req.headers.origin;
+  const origin = req.headers?.origin;
   
-  // Set safe origin
   if (origin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -136,7 +134,7 @@ export function setCorsHeaders(req: any, res: any): boolean {
  * Authenticate incoming request via Authorization header or return null
  */
 export function getAuthUser(req: any): AuthUser | null {
-  const authHeader = req.headers.authorization || req.headers.Authorization;
+  const authHeader = req.headers?.authorization || req.headers?.Authorization;
   if (!authHeader || typeof authHeader !== 'string') {
     return null;
   }
@@ -149,3 +147,65 @@ export function getAuthUser(req: any): AuthUser | null {
   return verifyToken(token);
 }
 
+/**
+ * Reliably parse request body across Vercel serverless runtime variants (Object, Buffer, String, Stream)
+ */
+export async function parseRequestBody(req: any): Promise<any> {
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body);
+      } catch {
+        return req.body;
+      }
+    }
+    if (Buffer.isBuffer(req.body)) {
+      try {
+        return JSON.parse(req.body.toString('utf-8'));
+      } catch {
+        return req.body.toString('utf-8');
+      }
+    }
+    if (typeof req.body === 'object') {
+      return req.body;
+    }
+  }
+
+  // Fallback: Read from request stream if not pre-parsed
+  try {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const raw = Buffer.concat(chunks).toString('utf-8');
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Extract action parameter from query string or body
+ */
+export function getActionParam(req: any, body: any): string {
+  try {
+    if (req.query?.action && typeof req.query.action === 'string') {
+      return req.query.action;
+    }
+    const url = req.url || '';
+    const queryIdx = url.indexOf('?');
+    if (queryIdx !== -1) {
+      const searchParams = new URLSearchParams(url.slice(queryIdx));
+      const action = searchParams.get('action');
+      if (action) return action;
+    }
+  } catch {
+    // ignore
+  }
+  return body?.action || 'login';
+}

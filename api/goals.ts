@@ -1,5 +1,5 @@
-import { getDb } from './_lib/mongodb';
-import { getAuthUser, setCorsHeaders, checkRateLimit } from './_lib/auth';
+import { getDb } from './_lib/mongodb.ts';
+import { getAuthUser, setCorsHeaders, checkRateLimit, parseRequestBody } from './_lib/auth.ts';
 
 const DEFAULT_GOALS = {
   dailyHours: 3.5,
@@ -43,15 +43,14 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    const body = await parseRequestBody(req);
+
     // POST / PUT /api/goals
     if (req.method === 'POST' || req.method === 'PUT') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-
       if (!body || typeof body !== 'object') {
         return res.status(400).json({ error: 'Invalid request body.' });
       }
 
-      // Validating numerical bounds
       const dailyHours = Math.max(0.5, Math.min(24, parseFloat(body.dailyHours) || 3.5));
       const weeklyHours = Math.max(1, Math.min(168, parseFloat(body.weeklyHours) || 20));
       const monthlyHours = Math.max(1, Math.min(744, parseFloat(body.monthlyHours) || 85));
@@ -79,6 +78,6 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   } catch (error: any) {
     console.error('API /api/goals internal error:', error);
-    return res.status(500).json({ error: 'An unexpected server error occurred.' });
+    return res.status(500).json({ error: 'An unexpected server error occurred: ' + (error.message || 'Unknown') });
   }
 }
